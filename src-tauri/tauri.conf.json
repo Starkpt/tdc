@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "tdc",
+        "title": "Topdeck Calendar",
         "width": 800,
         "height": 600
       }
