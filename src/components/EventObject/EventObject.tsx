@@ -1,6 +1,16 @@
 import { UniqueIdentifier } from "@dnd-kit/core";
-import { StylesConfig } from "react-select";
-import Select from "react-select";
+import {
+  horizontalListSortingStrategy,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useEffect, useMemo } from "react";
+import { shallowEqual, useSelector } from "react-redux";
+import Select, { StylesConfig } from "react-select";
+import { RootState } from "../../store/store";
+import { getColor } from "../../utils/utils";
+import { useMountStatus } from "../../hooks/customHooks";
 
 type Game = { label: string; value: string; image: string };
 
@@ -26,55 +36,122 @@ const dotStyles: StylesConfig<Game> = {
   menuPortal: (styles) => ({ ...styles, zIndex: 99999 }),
 };
 
-const defaultInitializer = (index: number) => index;
-
-export function createRange<T = number>(
-  length: number,
-  initializer: (index: number) => any = defaultInitializer
-): T[] {
-  return [...new Array(length)].map((_, index) => initializer(index));
-}
-
 export type ItemsType = {
   // Dynamic keys with number[] or string[] as values
   [key: string]: UniqueIdentifier[];
 };
 
 const itemCount = 3;
+const PLACEHOLDER_ID = "placeholder";
 
-const items = {
-  A: createRange(itemCount, (index) => index * 1 + 2),
-  B: createRange(itemCount, (index) => index * 2 + 5),
-  C: createRange(itemCount, (index) => index * 3 + 8),
-  // D: createRange(itemCount, (index) => `D${index + 1}`)
-} as ItemsType;
+export const EventObject = (
+  containerId?: UniqueIdentifier,
+  id: UniqueIdentifier,
+  vertical?: false
+) => {
+  // Access state context
+  const { items, activeId, scheduledEvents } = useSelector(
+    (state: RootState) => state.data,
+    shallowEqual
+  );
 
-export const EventObject = (containerRef?: React.Ref<HTMLDivElement>) => {
   if (!items) {
     return <div>no items</div>;
   }
 
-  return Object.values(items).map((item) => (
-    <Select
-      menuPlacement="auto"
-      maxMenuHeight={200}
-      menuPortalTarget={containerRef?.current || document.body} // Defaults to `document.body` if ref is undefined
-      styles={dotStyles}
-      options={games}
-      defaultValue={games[0]}
-      formatOptionLabel={(game) => (
-        <div
-          className="game-option"
-          style={{
-            height: "80px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <img src={game.image} style={{ height: "60px" }} alt={`${game.label}-image`} />
-        </div>
-      )}
-    />
-  ));
+  // Filtered scheduledEvents for SortableContext
+  const filteredContainers = useMemo(
+    () => scheduledEvents.filter((containerId) => containerId !== PLACEHOLDER_ID),
+    [scheduledEvents]
+  );
+
+  // Determine strategy based on vertical prop
+  const sortingStrategy = vertical ? verticalListSortingStrategy : horizontalListSortingStrategy;
+
+  const { setNodeRef, listeners, isDragging, isSorting, transform, transition } = useSortable({
+    id,
+  });
+
+  const mounted = useMountStatus();
+  const color = useMemo(() => getColor(id), [id]);
+  const fadeIn = isDragging && !mounted;
+
+  // Update cursor style when dragging
+  useEffect(() => {
+    if (isDragging) {
+      document.body.style.cursor = "grabbing";
+
+      return () => {
+        document.body.style.cursor = "";
+      };
+    }
+  }, [isDragging]);
+
+  const computedStyle: React.CSSProperties & { [key: string]: string | number | undefined } = {
+    ...wrapperStyles,
+    transition: [transition, wrapperStyles?.transition].filter(Boolean).join(", "),
+    "--translate-x": transform ? `${Math.round(transform.x)}px` : undefined,
+    "--translate-y": transform ? `${Math.round(transform.y)}px` : undefined,
+    "--scale-x": transform?.scaleX ? `${transform.scaleX}` : undefined,
+    "--scale-y": transform?.scaleY ? `${transform.scaleY}` : undefined,
+    "--index": index,
+    "--color": color,
+  };
+
+  // Class names using helper function for readability
+  const wrapperClassNames = classNames(styles.Wrapper, {
+    [styles.fadeIn]: fadeIn,
+    [styles.sorting]: isSorting,
+    [styles.dragOverlay]: isDragging,
+  });
+
+  const itemClassNames = classNames(styles.Item, {
+    [styles.dragging]: isDragging,
+    [styles.color]: color,
+  });
+
+  return (
+    <li ref={setNodeRef} className={wrapperClassNames} style={computedStyle}>
+      <div
+        className={itemClassNames}
+        style={{
+          backgroundColor: "#FFECDF",
+          maxHeight: "127px",
+          maxWidth: "393px",
+        }}
+        data-cypress="draggable-item"
+        tabIndex={0}
+        {...listeners}
+      >
+        <Select
+          menuPlacement="auto"
+          maxMenuHeight={200}
+          menuPortalTarget={document.body} // Defaults to `document.body` if ref is undefined
+          styles={dotStyles}
+          options={games}
+          defaultValue={games[1]}
+          formatOptionLabel={(game) => (
+            <div
+              className="game-option"
+              style={{
+                height: "80px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <img src={game.image} style={{ height: "60px" }} alt={`${game.label}-image`} />
+            </div>
+          )}
+        />
+
+        {/* 
+          <span className={styles.Actions}>
+            {onRemove ? <Remove className={styles.Remove} onClick={onRemove} /> : null}
+            {handle ? <Handle ref={handleRef} {...handleProps} /> : null}
+          </span> 
+        */}
+      </div>
+    </li>
+  );
 };
